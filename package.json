@@ -1,0 +1,17 @@
+{
+  "name": "socketio",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "console-stamp": "^0.2.9",
+    "express": "^4.17.1",
+    "mysql": "^2.17.1",
+    "socket.io": "^1.5.0"
+  }
+}
