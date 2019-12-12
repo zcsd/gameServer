@@ -41,6 +41,11 @@ exports.newUser = function newUser(user, socket){
 				socketmap[username] = socket;
 				users.push(username);
 				console.log('<Online Users>: ', users);
+				if(aiusers.length != 0){
+					for(var i = 0; i < aiusers.length; i++){
+						aisocketmap[aiusers[i]].emit('new user joined', username);
+					}	
+				}	
 			}
 		}
 	});
@@ -70,16 +75,24 @@ exports.login = function login(user, socket){
 				userinfo[colName] = rows[0][field.name];
 			}
 			//console.log(userinfo);
-			socket.emit('login', userinfo);
-			console.log('- User (%s) logged in.', user.username);
 
 			var username = user.username;
 			if(!(username in socketmap)) {
+				socket.emit('login', userinfo);
+				console.log('- User (%s) logged in.', username);
 				socket.username = username;
 				socketmap[username] = socket;
 				users.push(username);
 				console.log('<Online Users>: ', users);
-			}
+				if(aiusers.length != 0){
+					for(var i = 0; i < aiusers.length; i++){
+						aisocketmap[aiusers[i]].emit('new user joined', username);
+					}	
+				}
+			}else{ //the user existed in socketmap already, only allow one place login.
+				socket.emit('login', 'reject');
+				console.log('- User (%s) can not login again.', username);
+			}	
 		}else{ // multiple same username in database
 			socket.emit('login', 'multiple');
 		}
@@ -112,6 +125,11 @@ exports.userDisconnect = function userDisconnect(socket){
 		delete(socketmap[socket.username]);
 		users.splice(users.indexOf(socket.username), 1);
 		console.log('<Online Users>: ', users);
+		if(aiusers.length != 0){
+			for(var i = 0; i < aiusers.length; i++){
+				aisocketmap[aiusers[i]].emit('user left', socket.username);
+			}	
+		}
 	}else if(socket.username in aisocketmap){
 		console.log('- AI User (%s) Disconnected.', socket.username);
 		delete(aisocketmap[socket.username]);
@@ -121,12 +139,15 @@ exports.userDisconnect = function userDisconnect(socket){
 }
 
 exports.aiLogin = function aiLogin(aiusername, socket){
-	console.log('- AI User (%s) logged in.', aiusername);
 	if(!(aiusername in aisocketmap)){
+		console.log('- AI User (%s) logged in.', aiusername);
 		socket.username = aiusername;
 		aisocketmap[aiusername] = socket;
 		aiusers.push(aiusername);
 		socket.emit('AILogin', users);
 		console.log('<Online AI Users>: ', aiusers);
+	}else{
+		console.log('- AI User (%s) can not login again.', aiusername);
+		socket.emit('AILogin', 'reject');
 	}
 }
