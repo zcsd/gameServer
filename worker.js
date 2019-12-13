@@ -8,8 +8,9 @@ var pool = mysql.createPool({
 	database : 'gamedev'
 });
 
-var socketmap = {}, users = [];
-var aisocketmap = {}, aiusers = [];
+var socketmap = {}, users = [], busyUsers = [], idleUsers = [];
+var aisocketmap = {}, aiusers = [], busyAIUsers = [], idleAIUsers = [];
+var matchMap = {}; //dict {aiuser1: gameuser2, aiuser3: gameuser9, ...}
 
 var select_sql = 'SELECT * FROM userinfo WHERE username=?';
 var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW())';
@@ -40,7 +41,9 @@ exports.newUser = function newUser(user, socket){
 				socket.username = username;
 				socketmap[username] = socket;
 				users.push(username);
+				idleUsers.push(username);
 				console.log('<Online Users>: ', users);
+				console.log('<Idle Users>: ', idleUsers);
 				if(aiusers.length != 0){
 					for(var i = 0; i < aiusers.length; i++){
 						aisocketmap[aiusers[i]].emit('new user joined', username);
@@ -83,7 +86,9 @@ exports.login = function login(user, socket){
 				socket.username = username;
 				socketmap[username] = socket;
 				users.push(username);
+				idleUsers.push(username);
 				console.log('<Online Users>: ', users);
+				console.log('<Idle Users>: ', idleUsers);
 				if(aiusers.length != 0){
 					for(var i = 0; i < aiusers.length; i++){
 						aisocketmap[aiusers[i]].emit('new user joined', username);
@@ -124,17 +129,49 @@ exports.userDisconnect = function userDisconnect(socket){
 		console.log('- User (%s) Disconnected.', socket.username);
 		delete(socketmap[socket.username]);
 		users.splice(users.indexOf(socket.username), 1);
-		console.log('<Online Users>: ', users);
+		
+		if(busyUsers.includes(socket.username)){
+			var key = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
+			busyAIUsers.splice(busyAIUsers.indexOf(key), 1);
+			busyUsers.splice(busyUsers.indexOf(socket.username), 1);
+			idleAIUsers.push(key);
+			delete(matchMap[key]);
+		}else{
+			idleUsers.splice(idleUsers.indexOf(socket.username), 1);
+		}
+		
 		if(aiusers.length != 0){
 			for(var i = 0; i < aiusers.length; i++){
 				aisocketmap[aiusers[i]].emit('user left', socket.username);
 			}	
 		}
+		
+		console.log('<Online Users>: ', users);
+		console.log('<Idle Users>: ', idleUsers);
+		console.log('<Busy Users>: ', busyUsers);
+		console.log('<Idle AI Users>: ', idleAIUsers);
+		console.log('<Busy AI Users>: ', busyAIUsers);
+		console.log('<Match Map>: ', matchMap);
 	}else if(socket.username in aisocketmap){
 		console.log('- AI User (%s) Disconnected.', socket.username);
 		delete(aisocketmap[socket.username]);
 		aiusers.splice(aiusers.indexOf(socket.username), 1);
+		
+		if(busyAIUsers.includes(socket.username)){
+			busyUsers.splice(busyUsers.indexOf(matchMap[socket.username]), 1);
+			busyAIUsers.splice(busyAIUsers.indexOf(socket.username), 1);
+			idleUsers.push(matchMap[socket.username]);
+			delete(matchMap[socket.username]);
+		}else{
+			idleAIUsers.splice(idleAIUsers.indexOf(socket.username), 1);
+		}
+		
 		console.log('<Online AI Users>: ', aiusers);
+		console.log('<Idle Users>: ', idleUsers);
+		console.log('<Busy Users>: ', busyUsers);
+		console.log('<Idle AI Users>: ', idleAIUsers);
+		console.log('<Busy AI Users>: ', busyAIUsers);
+		console.log('<Match Map>: ', matchMap);
 	}
 }
 
@@ -144,10 +181,31 @@ exports.aiLogin = function aiLogin(aiusername, socket){
 		socket.username = aiusername;
 		aisocketmap[aiusername] = socket;
 		aiusers.push(aiusername);
-		socket.emit('AILogin', users);
+		idleAIUsers.push(aiusername);
+		socket.emit('AILogin', idleUsers);
 		console.log('<Online AI Users>: ', aiusers);
+		console.log('<Idle AI Users>: ', idleAIUsers);
 	}else{
 		console.log('- AI User (%s) can not login again.', aiusername);
 		socket.emit('AILogin', 'reject');
+	}
+}
+
+exports.matchUser = function matchUser(username, socket){
+	var aiusername = socket.username;
+	console.log('- AI User (%s) will match User (%s)', aiusername, username);
+	
+	if(idleUsers.includes(username) && idleAIUsers.includes(aiusername)){
+		busyAIUsers.push(aiusername);
+		busyUsers.push(username);
+		idleAIUsers.splice(idleAIUsers.indexOf(aiusername), 1);
+		idleUsers.splice(idleUsers.indexOf(username), 1);
+		matchMap[aiusername] = username;
+		aisocketmap[aiusername].emit('matchUser', 'success');
+		console.log('- AI User (%s) has matched User (%s)', aiusername, username);
+		console.log('<Match Map>: ', matchMap);
+	}else{
+		aisocketmap[aiusername].emit('matchUser', 'failure');
+		console.log('- AI User (%s) match failed.', aiusername);
 	}
 }
