@@ -136,16 +136,16 @@ exports.userDisconnect = function userDisconnect(socket){
 			busyUsers.splice(busyUsers.indexOf(socket.username), 1);
 			idleAIUsers.push(key);
 			delete(matchMap[key]);
+			aisocketmap[key].emit('user left', socket.username); // only inform the corresponding AI user
 		}else{
 			idleUsers.splice(idleUsers.indexOf(socket.username), 1);
+			if(aiusers.length != 0){
+				for(var i = 0; i < aiusers.length; i++){
+					aisocketmap[aiusers[i]].emit('user left', socket.username);
+				}	
+			}
 		}
-		
-		if(aiusers.length != 0){
-			for(var i = 0; i < aiusers.length; i++){
-				aisocketmap[aiusers[i]].emit('user left', socket.username);
-			}	
-		}
-		
+
 		console.log('<Online Users>: ', users);
 		console.log('<Idle Users>: ', idleUsers);
 		console.log('<Busy Users>: ', busyUsers);
@@ -158,10 +158,16 @@ exports.userDisconnect = function userDisconnect(socket){
 		aiusers.splice(aiusers.indexOf(socket.username), 1);
 		
 		if(busyAIUsers.includes(socket.username)){
+			var gameusername = matchMap[socket.username];
 			busyUsers.splice(busyUsers.indexOf(matchMap[socket.username]), 1);
 			busyAIUsers.splice(busyAIUsers.indexOf(socket.username), 1);
 			idleUsers.push(matchMap[socket.username]);
 			delete(matchMap[socket.username]);
+			if(aiusers.length != 0){
+				for(var i = 0; i < aiusers.length; i++){
+					aisocketmap[aiusers[i]].emit('user idle', gameusername);
+				}	
+			}
 		}else{
 			idleAIUsers.splice(idleAIUsers.indexOf(socket.username), 1);
 		}
@@ -202,10 +208,25 @@ exports.matchUser = function matchUser(username, socket){
 		idleUsers.splice(idleUsers.indexOf(username), 1);
 		matchMap[aiusername] = username;
 		aisocketmap[aiusername].emit('matchUser', 'success');
+		if(aiusers.length != 0){
+			for(var i = 0; i < aiusers.length; i++){
+				aisocketmap[aiusers[i]].emit('user busy', username);
+			}	
+		}
 		console.log('- AI User (%s) has matched User (%s)', aiusername, username);
 		console.log('<Match Map>: ', matchMap);
 	}else{
 		aisocketmap[aiusername].emit('matchUser', 'failure');
 		console.log('- AI User (%s) match failed.', aiusername);
 	}
+}
+
+exports.aiSend = function aiSend(msg, socket){
+	socketmap[matchMap[socket.username]].emit('receive private msg', msg);
+}
+
+exports.userSend = function userSend(msg, socket){
+	//matchMap{key: value} key is aisuername, value is username(gamer)
+	var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
+	aisocketmap[aiusername].emit('receive private msg', msg);
 }
