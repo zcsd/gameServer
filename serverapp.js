@@ -3,7 +3,7 @@ require('console-stamp')(console, {
 	label: false
 }); //https://www.npmjs.com/package/console-stamp
 
-var io = require('socket.io'); //version 1.5.0
+var io = require('socket.io'); //version 2.3.0
 var server = io.listen(3000);
 
 console.log('***Server is listening on port 3000***');
