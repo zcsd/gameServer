@@ -14,7 +14,8 @@ var matchMap = {}; //dict {aiuser1: gameuser2, aiuser3: gameuser9, ...}
 
 var select_sql = 'SELECT * FROM userinfo WHERE username=?';
 var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW())';
-var update_sql = 'UPDATE userinfo SET coins=?, updatetime=NOW() WHERE id=? AND username=?';
+var update_sql = 'UPDATE userinfo SET coins=?, updatetime=NOW() WHERE username=?';
+var insert_action_sql = 'INSERT INTO activity VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)';
 
 exports.newUser = function newUser(user, socket){
 	var values = [];
@@ -28,7 +29,7 @@ exports.newUser = function newUser(user, socket){
 
 	pool.query({sql:insert_sql, values:values}, function(err, rows, fields){
 		if(err){
-			console.log('!!!INSERT ERROR!!! - ', err.message);
+			console.log('!!!INSERT USER ERROR!!! - ', err.message);
 			socket.emit('newUser', 'failure');
 			return;
 		}else{
@@ -50,6 +51,31 @@ exports.newUser = function newUser(user, socket){
 					}	
 				}	
 			}
+		}
+	});
+}
+
+exports.newAction = function newAction(msg, socket){
+	//username, sequenceID, time, stage, actionType, operatedItem, rewardType, rewardQty, totalCoins
+	var values = [];
+	values.push(msg.username);
+	values.push(msg.sequenceID);
+	values.push(msg.stage);
+	values.push(msg.actionType);
+	values.push(msg.operatedItem);
+	values.push(msg.rewardType);
+	values.push(msg.rewardQty);
+	values.push(msg.totalCoins);
+
+	pool.query({sql:insert_action_sql, values:values}, function(err, rows, fields){
+		if(err){
+			console.log('!!!INSERT Action ERROR!!! - ', err.message);
+			return;
+		}else{
+			console.log('- Insert Action successfully!');
+			//To trigger aibackend
+			var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
+			aisocketmap[aiusername].emit('newAction', 'ok');
 		}
 	});
 }
@@ -104,22 +130,21 @@ exports.login = function login(user, socket){
 	});
 }
 
-exports.update = function update(user, socket){
+exports.updateCoins = function update(user, socket){
 	var values = [];
 	var result = {};
 
 	values.push(user.coins);
-	values.push(user.id);
 	values.push(user.username);
 
 	pool.query({sql:update_sql, values:values}, function(err, rows, fields){
 		if(err){
-			console.log('!!!UPDATE ERROR!!! - ', err.message);
-			socket.emit('update', 'failure');
+			console.log('!!!UPDATE Coins ERROR!!! - ', err.message);
+			socket.emit('updateCoins', 'failure');
 			return;
 		}else{
-			console.log('- Update user information successfully!');
-			socket.emit('update', 'success');
+			console.log('- Update user coins successfully!');
+			socket.emit('updateCoins', 'success');
 		}
 	});
 }

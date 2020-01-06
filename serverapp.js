@@ -24,11 +24,11 @@ server.on('connection', function(socket){
 		var worker = require('./worker');
 		worker.login(user, socket);
 	});
-
-	socket.on('update', function(user){
-		console.log('***Update User Information Event***');
+	//For game users
+	socket.on('updateCoins', function(user){
+		console.log('***Update User Coins Event***');
 		var worker = require('./worker');
-		worker.update(user, socket);
+		worker.updateCoins(user, socket);
 	});
 	
 	//For game and AI users
@@ -52,16 +52,25 @@ server.on('connection', function(socket){
 		worker.matchUser(username, socket);
 	});
 	
+	//For AI users
 	socket.on('ai send private msg', function(msg){
 		console.log('***AI Send Msg Event***');
 		var worker = require('./worker');
 		worker.aiSend(msg, socket);
 	});
 	
+	//For game users
 	socket.on('user send private msg', function(msg){
 		console.log('***User Send Msg Event***');
 		var worker = require('./worker');
 		worker.userSend(msg, socket);
+	});
+	
+	//For game users
+	socket.on('newAction', function(msg){
+		console.log('***Insert User Game Action Event***');
+		var worker = require('./worker');
+		worker.newAction(msg, socket);
 	});
 	
 });
