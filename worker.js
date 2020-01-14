@@ -73,9 +73,12 @@ exports.newAction = function newAction(msg, socket){
 			return;
 		}else{
 			console.log('- Insert Action successfully!');
-			//To trigger aibackend
-			var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
-			aisocketmap[aiusername].emit('newAction', 'ok');
+			if(Object.keys(matchMap).length != 0){
+				//To trigger aibackend
+				var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
+				aisocketmap[aiusername].emit('newAction', 'new');
+				console.log('- Triggerred AIBackend.');
+			}
 		}
 	});
 }
