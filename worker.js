@@ -13,8 +13,9 @@ var aisocketmap = {}, aiusers = [], busyAIUsers = [], idleAIUsers = [];
 var matchMap = {}; //dict {aiuser1: gameuser2, aiuser3: gameuser9, ...}
 
 var select_sql = 'SELECT * FROM userinfo WHERE username=?';
-var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW())';
+var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW(), NOW())';
 var update_sql = 'UPDATE userinfo SET coins=?, updatetime=NOW() WHERE username=?';
+var lastLoginTime_sql = 'UPDATE userinfo SET lastLoginTime=NOW() WHERE username=?';
 var insert_action_sql = 'INSERT INTO activity VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)';
 
 exports.newUser = function newUser(user, socket){
@@ -93,7 +94,8 @@ exports.login = function login(user, socket){
 		timeofbirth: "",
 		coins: "",
 		whichavatar: "",
-		updatetime: ""
+		updatetime: "",
+		lastLoginTime: "",
 	};
 
 	values.push(user.username);
@@ -111,6 +113,15 @@ exports.login = function login(user, socket){
 			var username = user.username;
 			if(!(username in socketmap)) {
 				socket.emit('login', userinfo);
+				//update lastLoginTime
+				pool.query({sql:lastLoginTime_sql, values:username}, function(err, rows, fields){
+					if(err){
+						console.log("!!!Fail to Update lastLoginTime!!! - ", err.message);
+					}else{
+						console.log("- Update lastLoginTime Successfully.");
+					}			
+				});
+				
 				console.log('- User (%s) logged in.', username);
 				socket.username = username;
 				socketmap[username] = socket;
@@ -143,11 +154,11 @@ exports.updateCoins = function update(user, socket){
 	pool.query({sql:update_sql, values:values}, function(err, rows, fields){
 		if(err){
 			console.log('!!!UPDATE Coins ERROR!!! - ', err.message);
-			socket.emit('updateCoins', 'failure');
+			//socket.emit('updateCoins', 'failure');
 			return;
 		}else{
 			console.log('- Update user coins successfully!');
-			socket.emit('updateCoins', 'success');
+			//socket.emit('updateCoins', 'success');
 		}
 	});
 }
