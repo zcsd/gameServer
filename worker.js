@@ -1,4 +1,7 @@
 var mysql = require('mysql');
+var request = require('request');
+
+const httpURL = 'http://54.255.208.140:8000'
 
 var pool = mysql.createPool({
 	connectionLimit : 10,
@@ -8,9 +11,9 @@ var pool = mysql.createPool({
 	database : 'gamedev'
 });
 
-var socketmap = {}, users = [], busyUsers = [], idleUsers = [];
-var aisocketmap = {}, aiusers = [], busyAIUsers = [], idleAIUsers = [];
-var matchMap = {}; //dict {aiuser1: gameuser2, aiuser3: gameuser9, ...}
+var socketmap = {}, users = [];
+var websocket;
+var isWSConnected = false;
 
 var select_sql = 'SELECT * FROM userinfo WHERE username=?';
 var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW(), NOW())';
@@ -35,7 +38,7 @@ exports.newUser = function newUser(user, socket){
 			return;
 		}else{
 			console.log('- Insert new user (%s) successfully!', user.username);
-			socket.emit('newUser', 'success');
+			socket.emit('newUser', 'success'); // send success signal to game client
 			console.log('- User (%s) logged in.', user.username);
 
 			var username = user.username;
@@ -43,42 +46,7 @@ exports.newUser = function newUser(user, socket){
 				socket.username = username;
 				socketmap[username] = socket;
 				users.push(username);
-				idleUsers.push(username);
 				console.log('<Online Users>: ', users);
-				console.log('<Idle Users>: ', idleUsers);
-				if(aiusers.length != 0){
-					for(var i = 0; i < aiusers.length; i++){
-						aisocketmap[aiusers[i]].emit('new user joined', username);
-					}	
-				}	
-			}
-		}
-	});
-}
-
-exports.newAction = function newAction(msg, socket){
-	//username, sequenceID, time, stage, actionType, operatedItem, rewardType, rewardQty, totalCoins
-	var values = [];
-	values.push(msg.username);
-	values.push(msg.sequenceID);
-	values.push(msg.stage);
-	values.push(msg.actionType);
-	values.push(msg.operatedItem);
-	values.push(msg.rewardType);
-	values.push(msg.rewardQty);
-	values.push(msg.totalCoins);
-
-	pool.query({sql:insert_action_sql, values:values}, function(err, rows, fields){
-		if(err){
-			console.log('!!!INSERT Action ERROR!!! - ', err.message);
-			return;
-		}else{
-			console.log('- Insert Action successfully!');
-			if(Object.keys(matchMap).length != 0){
-				//To trigger aibackend
-				var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
-				aisocketmap[aiusername].emit('newAction', 'new');
-				console.log('- Triggerred AIBackend.');
 			}
 		}
 	});
@@ -112,11 +80,11 @@ exports.login = function login(user, socket){
 
 			var username = user.username;
 			if(!(username in socketmap)) {
-				socket.emit('login', userinfo);
-				//update lastLoginTime
+				socket.emit('login', userinfo); //send history userinformation to game client
+				//update LoginTime
 				pool.query({sql:lastLoginTime_sql, values:username}, function(err, rows, fields){
 					if(err){
-						console.log("!!!Fail to Update lastLoginTime!!! - ", err.message);
+						console.log("- Fail to Update lastLoginTime.");
 					}else{
 						console.log("- Update lastLoginTime Successfully.");
 					}			
@@ -126,20 +94,49 @@ exports.login = function login(user, socket){
 				socket.username = username;
 				socketmap[username] = socket;
 				users.push(username);
-				idleUsers.push(username);
 				console.log('<Online Users>: ', users);
-				console.log('<Idle Users>: ', idleUsers);
-				if(aiusers.length != 0){
-					for(var i = 0; i < aiusers.length; i++){
-						aisocketmap[aiusers[i]].emit('new user joined', username);
-					}	
-				}
 			}else{ //the user existed in socketmap already, only allow one place login.
 				socket.emit('login', 'reject');
 				console.log('- User (%s) can not login again.', username);
 			}	
 		}else{ // multiple same username in database
 			socket.emit('login', 'multiple');
+		}
+	});
+}
+
+exports.newAction = function newAction(msg, socket){
+	//username, sequenceID, time, stage, actionType, operatedItem, rewardType, rewardQty, totalCoins
+	var values = [];
+	values.push(msg.username);
+	values.push(msg.sequenceID);
+	values.push(msg.stage);
+	values.push(msg.actionType);
+	values.push(msg.operatedItem);
+	values.push(msg.rewardType);
+	values.push(msg.rewardQty);
+	values.push(msg.totalCoins);
+	
+	//send http request
+	if(msg.actionType == 'buy' || msg.actionType == 'use' || msg.actionType == 'takeback'){
+		getHint(msg);
+	}else if(msg.actionType == 'init' && isWSConnected == true){
+		var str1 = "欢迎来到";
+		var str2;
+		if(msg.stage == 'diffusion') 
+			str2 = "扩散实验室";
+		else if(msg.stage == 'osmosis')
+			str2 = "渗透实验室";
+		
+		websocket.send(str1.concat(str2)); // send weclome msg to TG
+	}
+	
+	pool.query({sql:insert_action_sql, values:values}, function(err, rows, fields){
+		if(err){
+			console.log('!!!INSERT Action ERROR!!! - ', err.message);
+			return;
+		}else{
+			console.log('- Insert Action successfully!');
 		}
 	});
 }
@@ -154,118 +151,74 @@ exports.updateCoins = function update(user, socket){
 	pool.query({sql:update_sql, values:values}, function(err, rows, fields){
 		if(err){
 			console.log('!!!UPDATE Coins ERROR!!! - ', err.message);
-			//socket.emit('updateCoins', 'failure');
+			socket.emit('updateCoins', 'failure');
 			return;
 		}else{
 			console.log('- Update user coins successfully!');
-			//socket.emit('updateCoins', 'success');
+			socket.emit('updateCoins', 'success');
 		}
 	});
 }
 
 exports.userDisconnect = function userDisconnect(socket){
 	if(socket.username in socketmap){
-		console.log('- User (%s) Disconnected.', socket.username);
+		console.log('- Game User (%s) Disconnected.', socket.username);
 		delete(socketmap[socket.username]);
 		users.splice(users.indexOf(socket.username), 1);
-		
-		if(busyUsers.includes(socket.username)){
-			var key = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
-			busyAIUsers.splice(busyAIUsers.indexOf(key), 1);
-			busyUsers.splice(busyUsers.indexOf(socket.username), 1);
-			idleAIUsers.push(key);
-			delete(matchMap[key]);
-			aisocketmap[key].emit('user left', socket.username); // only inform the corresponding AI user
-		}else{
-			idleUsers.splice(idleUsers.indexOf(socket.username), 1);
-			if(aiusers.length != 0){
-				for(var i = 0; i < aiusers.length; i++){
-					aisocketmap[aiusers[i]].emit('user left', socket.username);
-				}	
-			}
-		}
-
-		console.log('<Online Users>: ', users);
-		console.log('<Idle Users>: ', idleUsers);
-		console.log('<Busy Users>: ', busyUsers);
-		console.log('<Idle AI Users>: ', idleAIUsers);
-		console.log('<Busy AI Users>: ', busyAIUsers);
-		console.log('<Match Map>: ', matchMap);
-	}else if(socket.username in aisocketmap){
-		console.log('- AI User (%s) Disconnected.', socket.username);
-		delete(aisocketmap[socket.username]);
-		aiusers.splice(aiusers.indexOf(socket.username), 1);
-		
-		if(busyAIUsers.includes(socket.username)){
-			var gameusername = matchMap[socket.username];
-			busyUsers.splice(busyUsers.indexOf(matchMap[socket.username]), 1);
-			busyAIUsers.splice(busyAIUsers.indexOf(socket.username), 1);
-			idleUsers.push(matchMap[socket.username]);
-			delete(matchMap[socket.username]);
-			if(aiusers.length != 0){
-				for(var i = 0; i < aiusers.length; i++){
-					aisocketmap[aiusers[i]].emit('user idle', gameusername);
-				}	
-			}
-		}else{
-			idleAIUsers.splice(idleAIUsers.indexOf(socket.username), 1);
-		}
-		
-		console.log('<Online AI Users>: ', aiusers);
-		console.log('<Idle Users>: ', idleUsers);
-		console.log('<Busy Users>: ', busyUsers);
-		console.log('<Idle AI Users>: ', idleAIUsers);
-		console.log('<Busy AI Users>: ', busyAIUsers);
-		console.log('<Match Map>: ', matchMap);
+		console.log('<Online Game Users>: ', users);
 	}
 }
 
-exports.aiLogin = function aiLogin(aiusername, socket){
-	if(!(aiusername in aisocketmap)){
-		console.log('- AI User (%s) logged in.', aiusername);
-		socket.username = aiusername;
-		aisocketmap[aiusername] = socket;
-		aiusers.push(aiusername);
-		idleAIUsers.push(aiusername);
-		socket.emit('AILogin', idleUsers);
-		console.log('<Online AI Users>: ', aiusers);
-		console.log('<Idle AI Users>: ', idleAIUsers);
+exports.tmallgenieConnect = function tmallgenieConnect(socket){
+	if(isWSConnected == false){
+		console.log('- A TmallGenie Client Connected.');
+		websocket = socket;
+		isWSConnected = true;
 	}else{
-		console.log('- AI User (%s) can not login again.', aiusername);
-		socket.emit('AILogin', 'reject');
+		console.log('!!!ERROR, TmallGenie already Connected!!!')
 	}
 }
 
-exports.matchUser = function matchUser(username, socket){
-	var aiusername = socket.username;
-	console.log('- AI User (%s) will match User (%s)', aiusername, username);
+exports.tmallgenieDisconnect = function tmallgenieDisconnect(socket){
+	if(isWSConnected == true){
+		console.log('- A TmallGenie Client Disconnected.');
+		websocket = null;
+		isWSConnected = false;
+	}else{
+		console.log('!!!ERROR, TmallGenie already Disconnected!!!')
+	}
+}
+
+exports.readMsgFromTG = function readMsgFromTG(message){
+	console.log('- Msg Received from TG: ', message)
+}
+
+function sendHint(msgReceived){
+	socketmap[msgReceived.username].emit(msgReceived.stage, msgReceived.hint);
 	
-	if(idleUsers.includes(username) && idleAIUsers.includes(aiusername)){
-		busyAIUsers.push(aiusername);
-		busyUsers.push(username);
-		idleAIUsers.splice(idleAIUsers.indexOf(aiusername), 1);
-		idleUsers.splice(idleUsers.indexOf(username), 1);
-		matchMap[aiusername] = username;
-		aisocketmap[aiusername].emit('matchUser', 'success');
-		if(aiusers.length != 0){
-			for(var i = 0; i < aiusers.length; i++){
-				aisocketmap[aiusers[i]].emit('user busy', username);
-			}	
-		}
-		console.log('- AI User (%s) has matched User (%s)', aiusername, username);
-		console.log('<Match Map>: ', matchMap);
-	}else{
-		aisocketmap[aiusername].emit('matchUser', 'failure');
-		console.log('- AI User (%s) match failed.', aiusername);
+	console.log('- Sent a Hint to Game Client.', msgReceived.username)
+	if(isWSConnected){
+		websocket.send(msgReceived.hint);
+		console.log('- Sent a Hint to TmallGenie CC.')
 	}
 }
 
-exports.aiSend = function aiSend(msg, socket){
-	socketmap[matchMap[socket.username]].emit('receive private msg', msg);
-}
+function getHint(msgToSend){
+	var options = {
+		url: httpURL,
+		method: "GET",
+		json: true,
+		headers: {"content-type": "application/json",},
+		body: JSON.stringify(msgToSend)
+	};
 
-exports.userSend = function userSend(msg, socket){
-	//matchMap{key: value} key is aisuername, value is username(gamer)
-	var aiusername = Object.keys(matchMap).find(key => matchMap[key] === socket.username);
-	aisocketmap[aiusername].emit('receive private msg', msg);
+	request(options, function getResponse(error, response, body){
+		if (!error && response.statusCode == 200) {
+			console.log('- Received a Hint from AI HTTP Server.');
+			sendHint(body);
+		}else{
+			console.log('!!!HTTP Request ERROR!!! - ');
+		}	
+	}); 
 }
+	

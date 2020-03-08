@@ -3,74 +3,61 @@ require('console-stamp')(console, {
 	label: false
 }); //https://www.npmjs.com/package/console-stamp
 
-var io = require('socket.io'); //version 2.3.0
-var server = io.listen(3000);
+var worker = require('./worker');
 
-console.log('***Server is listening on port 3000***');
+// create socket.io server, listening on port 3000
+// communicate with game client
+var SocketIO = require('socket.io'); //version 2.3.0
+var ioServer = SocketIO.listen(3000);
+console.log('***Game socket.io server is listening on port 3000***');
 
-server.on('connection', function(socket){
-	console.log('***A User/AI_User Connected***');
+// create websocket server, listening on port 50000
+// communicate with TmallGenie CC mini-program
+var WebSocket = require('ws');
+var wsServer = new WebSocket.Server({ port: 50000 });
+console.log('***TmallGenie websocket server is listening on port 50000***');
 
-	//For game users
-	socket.on('newUser', function(user){
+wsServer.on('connection', function connection(websocket) {
+  console.log('***TmallGenie Connect Event***');
+  worker.tmallgenieConnect(websocket);
+  
+  websocket.on('close', function onclose(event) {
+	console.log('***TmallGenie Disconnect Event***');
+	worker.tmallgenieDisconnect(websocket);
+  });
+  
+  websocket.on('message', function incoming(message) {
+	console.log('***TmallGenie Message Event***');
+	worker.readMsgFromTG(message);
+  });
+});
+
+ioServer.on('connection', function(iosocket){
+	console.log('***A Game_User Connected***');
+
+	iosocket.on('newUser', function(user){
 		console.log('***Add New User Event***');
-		var worker = require('./worker');
-		worker.newUser(user, socket);
+		worker.newUser(user, iosocket);
 	});
 	
-	//For game users
-	socket.on('login', function(user){
+	iosocket.on('login', function(user){
 		console.log('***User Login Event***');
-		var worker = require('./worker');
-		worker.login(user, socket);
+		worker.login(user, iosocket);
 	});
-	//For game users
-	socket.on('updateCoins', function(user){
+	
+	iosocket.on('updateCoins', function(user){
 		console.log('***Update User Coins Event***');
-		var worker = require('./worker');
-		worker.updateCoins(user, socket);
+		worker.updateCoins(user, iosocket);
 	});
 	
-	//For game and AI users
-	socket.on('disconnect', function(){
-		console.log('***A User/AI_User Disconnected***');
-		var worker = require('./worker');
-		worker.userDisconnect(socket);
-	});
-	
-	//For AI users
-	socket.on('AILogin', function(aiusername){
-		console.log('***AI User Login Event***');
-		var worker = require('./worker');
-		worker.aiLogin(aiusername, socket);
-	});
-	
-	//For AI users
-	socket.on('matchUser', function(username){
-		console.log('***Match User Event***');
-		var worker = require('./worker');
-		worker.matchUser(username, socket);
-	});
-	
-	//For AI users
-	socket.on('ai send private msg', function(msg){
-		console.log('***AI Send Msg Event***');
-		var worker = require('./worker');
-		worker.aiSend(msg, socket);
-	});
-	
-	//For game users
-	socket.on('user send private msg', function(msg){
-		console.log('***User Send Msg Event***');
-		var worker = require('./worker');
-		worker.userSend(msg, socket);
-	});
-	
-	//For game users
-	socket.on('newAction', function(msg){
+	iosocket.on('newAction', function(msg){
 		console.log('***Insert User Game Action Event***');
-		var worker = require('./worker');
-		worker.newAction(msg, socket);
+		worker.newAction(msg, iosocket);
+	});
+	
+	iosocket.on('disconnect', function(){
+		console.log('***A Game_User Disconnected***');
+		worker.userDisconnect(iosocket);
 	});
 	
 });
