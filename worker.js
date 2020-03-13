@@ -19,7 +19,8 @@ var select_sql = 'SELECT * FROM userinfo WHERE username=?';
 var insert_sql = 'INSERT INTO userinfo VALUES (?, ?, ?, NOW(), ?, ?, NOW(), NOW())';
 var update_sql = 'UPDATE userinfo SET coins=?, updatetime=NOW() WHERE username=?';
 var lastLoginTime_sql = 'UPDATE userinfo SET lastLoginTime=NOW() WHERE username=?';
-var insert_action_sql = 'INSERT INTO activity VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)';
+var insert_action_sql = 'INSERT INTO activity VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)';
+var update_hint_sql = 'UPDATE activity SET hint=? WHERE username=? AND sequenceID=?';
 
 exports.newUser = function newUser(user, socket){
 	var values = [];
@@ -117,6 +118,7 @@ exports.newAction = function newAction(msg, socket){
 	values.push(msg.rewardQty);
 	values.push(msg.totalCoins);
 	values.push(msg.itemsState);
+	values.push('')
 	
 	//send http request
 	if(msg.actionType == 'buy' || msg.actionType == 'use' || msg.actionType == 'takeback' || msg.actionType == 'read'){
@@ -202,11 +204,22 @@ function sendHint(msgReceived){
 		websocket.send(msgReceived.hint);
 		console.log('- Sent a Hint to TmallGenie CC.')
 	}
+	
+	var values = [];
+	values.push(msgReceived.hint);
+	values.push(msgReceived.username);
+	values.push(msgReceived.sequenceID);
+	// insert received hint to db
+	pool.query({sql:update_hint_sql, values:values}, function(err, rows, fields){
+		if(err){
+			console.log('!!!UPDATE hints ERROR!!! - ', err.message);
+			return;
+		}
+	});
 }
 
 function getHint(msg){
-	
-	var msgToSend = {username: msg.username, stage: msg.stage, itemsState: msg.itemsState};
+	var msgToSend = {username: msg.username, sequenceID: msg.sequenceID, stage: msg.stage, itemsState: msg.itemsState};
 	var options = {
 		url: httpURL,
 		method: "GET",
