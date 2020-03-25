@@ -121,7 +121,7 @@ exports.newAction = function newAction(msg, socket){
 	values.push('')
 	
 	//send http request
-	if(msg.actionType == 'buy' || msg.actionType == 'use' || msg.actionType == 'takeback' || msg.actionType == 'read'){
+	if(msg.actionType == 'buy' || msg.actionType == 'takeback' || (msg.actionType == 'use')){
 		getHint(msg);
 	}else if(msg.actionType == 'init' && isWSConnected == true){
 		var str1 = "欢迎来到";
@@ -194,6 +194,11 @@ exports.tmallgenieDisconnect = function tmallgenieDisconnect(socket){
 
 exports.readMsgFromTG = function readMsgFromTG(message){
 	console.log('- Msg Received from TG: ', message)
+	if(message == 'colder'){
+		socketmap[users[0]].emit('command', 'colder');
+	}else if(message == 'hotter'){
+		socketmap[users[0]].emit('command', 'hotter');
+	}
 }
 
 function sendHint(msgReceived){
