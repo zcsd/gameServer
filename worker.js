@@ -121,7 +121,7 @@ exports.newAction = function newAction(msg, socket){
 	values.push('')
 	
 	//send http request
-	if(msg.actionType == 'buy' || msg.actionType == 'takeback' || (msg.actionType == 'use')){
+	if(msg.actionType == 'buy' || msg.actionType == 'takeback' || msg.actionType == 'use' || msg.actionType == 'wronguse' || msg.actionType == 'refuseusing'){
 		getHint(msg);
 	}else if(msg.actionType == 'init' && isWSConnected == true){
 		var str1 = "欢迎来到";
@@ -198,6 +198,8 @@ exports.readMsgFromTG = function readMsgFromTG(message){
 		socketmap[users[0]].emit('command', 'colder');
 	}else if(message == 'hotter'){
 		socketmap[users[0]].emit('command', 'hotter');
+	}else if(message == 'leftsalt'){
+		socketmap[users[0]].emit('command', 'leftsalt');
 	}
 }
 
